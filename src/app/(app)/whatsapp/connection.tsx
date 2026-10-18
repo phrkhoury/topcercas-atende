@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type State = { status: "disconnected" | "connecting" | "qr" | "connected"; qr?: string; me?: string; message?: string; cloudApi?: boolean };
+type State = { status: "disconnected" | "connecting" | "qr" | "connected"; qr?: string; me?: string; message?: string; cloudApi?: boolean; imported?: number };
 
 const LABEL: Record<State["status"], { text: string; style: string }> = {
   disconnected: { text: "Desconectado", style: "bg-rose-500/15 text-rose-300" },
@@ -55,6 +55,11 @@ export function WhatsAppConnection() {
           <div className="mt-6 space-y-4">
             <p className="text-sm">
               Conectado ao número <strong>+{state.me}</strong>. As mensagens que chegarem aparecem em <strong>Conversas</strong> e a IA responde automaticamente.
+            </p>
+            <p className="text-sm text-muted">
+              {state.imported
+                ? `Histórico: ${state.imported} mensagens dos últimos 10 dias importadas para Conversas.`
+                : "O histórico dos últimos 10 dias é importado na primeira leitura do QR Code. Se você conectou antes desta atualização, desconecte e leia o QR de novo para importar."}
             </p>
             <button className="btn-ghost hover:border-rose-400" disabled={busy} onClick={() => act("logout")}>Desconectar</button>
           </div>

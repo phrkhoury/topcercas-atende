@@ -11,17 +11,21 @@ import makeWASocket, {
   isPnUser,
   jidDecode,
   useMultiFileAuthState as loadAuthState,
+  type Contact,
   type WAMessage,
   type WASocket,
 } from "@whiskeysockets/baileys";
-import { handleIncoming, recordReplyFromPhone } from "./inbox";
+import { handleIncoming, importHistory, recordReplyFromPhone, type HistoryItem } from "./inbox";
+
+/** Quantos dias de conversas antigas importar ao conectar. */
+const HISTORY_DAYS = 10;
 
 export type WaStatus = "disconnected" | "connecting" | "qr" | "connected";
 export type WaState = { status: WaStatus; qr?: string; me?: string; message?: string; updatedAt: string };
 
 const AUTH_DIR = process.env.WA_AUTH_DIR || (existsSync("/data") ? "/data/wa-auth" : path.join(process.cwd(), ".wa-auth"));
 
-type Holder = { sock?: WASocket; state: WaState; sentIds: Set<string>; starting?: boolean };
+type Holder = { sock?: WASocket; state: WaState; sentIds: Set<string>; starting?: boolean; importedCount?: number };
 const g = globalThis as unknown as { __waQr?: Holder };
 const holder: Holder = (g.__waQr ??= { state: { status: "disconnected", updatedAt: new Date().toISOString() }, sentIds: new Set() });
 
@@ -46,7 +50,7 @@ const logger = {
   },
 };
 
-export const getWaState = () => holder.state;
+export const getWaState = () => ({ ...holder.state, imported: holder.importedCount ?? 0 });
 export const hasSavedSession = () => existsSync(path.join(AUTH_DIR, "creds.json"));
 
 /** Conecta (ou reconecta). Sem sessão salva, gera um QR Code para ler no celular. */
@@ -61,9 +65,10 @@ export async function startWhatsApp() {
     const sock = makeWASocket({
       auth: state,
       logger,
-      browser: Browsers.ubuntu("TOPCERCAS Atende"),
+      // Conectar como "computador" faz o WhatsApp enviar mais histórico na primeira leitura do QR.
+      browser: Browsers.macOS("TOPCERCAS Atende"),
       markOnlineOnConnect: false, // mantém as notificações no celular
-      syncFullHistory: false,
+      syncFullHistory: true,
     });
     holder.sock = sock;
 
@@ -95,6 +100,18 @@ export async function startWhatsApp() {
       for (const m of messages) {
         handleMessage(m, type).catch((err) => console.error("[whatsapp] mensagem", err));
       }
+    });
+
+    // Histórico enviado pelo celular logo após conectar (chega em vários lotes).
+    sock.ev.on("messaging-history.set", ({ messages, contacts, lidPnMappings }) => {
+      importHistoryBatch(messages, contacts, lidPnMappings ?? [])
+        .then((n) => {
+          if (n > 0) {
+            holder.importedCount = (holder.importedCount ?? 0) + n;
+            console.log(`[whatsapp] histórico: ${n} mensagens importadas`);
+          }
+        })
+        .catch((err) => console.error("[whatsapp] histórico", err));
     });
   } finally {
     holder.starting = false;
@@ -139,27 +156,66 @@ function messageText(m: WAMessage): string | null {
   return null;
 }
 
+const isPrivateChat = (jid: string | null | undefined): jid is string =>
+  Boolean(jid && !isJidGroup(jid) && !isJidBroadcast(jid) && !jid.endsWith("@newsletter"));
+
+/** Número de telefone real. O WhatsApp às vezes identifica o contato por um "LID" em vez do número. */
+function phoneOf(m: WAMessage, lidToPn?: Map<string, string>) {
+  const jid = m.key.remoteJid!;
+  const alt = m.key.remoteJidAlt;
+  const pnJid = isPnUser(jid) ? jid : alt && isPnUser(alt) ? alt : (lidToPn?.get(jid) ?? null);
+  return jidDecode(pnJid ?? jid)?.user ?? null;
+}
+
 async function handleMessage(m: WAMessage, type: string) {
   const jid = m.key.remoteJid;
-  if (!jid || isJidGroup(jid) || isJidBroadcast(jid) || jid.endsWith("@newsletter")) return;
+  if (!isPrivateChat(jid)) return;
 
   // "append" traz mensagens antigas/sincronizadas: só aceitamos as recentes enviadas pelo próprio celular.
   const ts = Number(m.messageTimestamp ?? 0) * 1000;
   if (type !== "notify" && !(m.key.fromMe && Date.now() - ts < 2 * 60_000)) return;
 
   const text = messageText(m);
-  if (!text) return;
-
-  // Número de telefone real (o WhatsApp às vezes identifica o contato por um "LID").
-  const alt = m.key.remoteJidAlt;
-  const pnJid = isPnUser(jid) ? jid : alt && isPnUser(alt) ? alt : null;
-  const phone = jidDecode(pnJid ?? jid)?.user;
-  if (!phone) return;
+  const phone = phoneOf(m);
+  if (!text || !phone) return;
+  const waId = m.key.id ?? undefined;
 
   if (m.key.fromMe) {
-    if (m.key.id && holder.sentIds.has(m.key.id)) return; // enviada pelo próprio app
-    await recordReplyFromPhone({ phone, waJid: jid, text });
+    if (waId && holder.sentIds.has(waId)) return; // enviada pelo próprio app
+    await recordReplyFromPhone({ phone, waJid: jid, text, waId });
     return;
   }
-  await handleIncoming({ phone, name: m.pushName ?? undefined, text, channel: "whatsapp", waJid: jid });
+  await handleIncoming({ phone, name: m.pushName ?? undefined, text, channel: "whatsapp", waJid: jid, waId });
+}
+
+/** Converte um lote do histórico do celular e grava só conversas individuais dos últimos HISTORY_DAYS dias. */
+async function importHistoryBatch(messages: WAMessage[], contacts: Contact[], lidPnMappings: { lid: string; pn: string }[]) {
+  const since = Date.now() - HISTORY_DAYS * 86_400_000;
+  const lidToPn = new Map<string, string>(lidPnMappings.map((x) => [x.lid, x.pn]));
+  const names = new Map<string, string>();
+  for (const c of contacts) {
+    if (c.lid && c.phoneNumber) lidToPn.set(c.lid, c.phoneNumber);
+    const name = c.name ?? c.notify ?? c.verifiedName;
+    if (name) for (const id of [c.id, c.lid, c.phoneNumber]) if (id) names.set(id, name);
+  }
+
+  const items: HistoryItem[] = [];
+  for (const m of messages) {
+    const jid = m.key.remoteJid;
+    const at = Number(m.messageTimestamp ?? 0) * 1000;
+    if (!isPrivateChat(jid) || !m.key.id || at < since) continue;
+    const text = messageText(m);
+    const phone = phoneOf(m, lidToPn);
+    if (!text || !phone) continue;
+    items.push({
+      phone,
+      waJid: jid,
+      name: (!m.key.fromMe ? m.pushName : null) ?? names.get(jid) ?? undefined,
+      fromMe: Boolean(m.key.fromMe),
+      text,
+      at: new Date(at),
+      waId: m.key.id,
+    });
+  }
+  return items.length ? importHistory(items) : 0;
 }

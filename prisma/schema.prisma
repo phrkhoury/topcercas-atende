@@ -59,6 +59,7 @@ model Message {
   role           String // customer | ai | agent | system
   text           String
   userId         String? // quem enviou, quando role = agent
+  waId           String?      @unique // id da mensagem no WhatsApp (evita duplicar ao importar histórico)
   user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
 
