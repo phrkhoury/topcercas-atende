@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Valores de etapa, papel e status ficam em src/lib/constants.ts.
+
+model User {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          String         @default("colaborador") // admin | colaborador
+  active        Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  messages      Message[]
+  conversations Conversation[]
+}
+
+model Contact {
+  id           String        @id @default(cuid())
+  phone        String        @unique
+  name         String?
+  channel      String        @default("sim") // sim | whatsapp
+  stage        String        @default("novo")
+  service      String?
+  address      String?
+  meters       Int?
+  value        Float?
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  conversation Conversation?
+  appointments Appointment[]
+}
+
+model Conversation {
+  id            String    @id @default(cuid())
+  contactId     String    @unique
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  mode          String    @default("ai") // ai | human
+  handoffReason String?
+  assignedToId  String?
+  assignedTo    User?     @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  unread        Int       @default(0)
+  lastMessageAt DateTime  @default(now())
+  messages      Message[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // customer | ai | agent | system
+  text           String
+  userId         String? // quem enviou, quando role = agent
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Appointment {
+  id             String    @id @default(cuid())
+  contactId      String
+  contact        Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  start          DateTime
+  durationMin    Int       @default(60)
+  address        String?
+  notes          String?
+  status         String    @default("agendada") // agendada | concluida | cancelada
+  reminderSentAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([start])
+}
+
+model Settings {
+  id            Int      @id @default(1)
+  companyName   String
+  assistantName String
+  knowledge     String
+  instructions  String
+  workDays      String   @default("1,2,3,4,5") // 0 = domingo
+  workStart     String   @default("08:00")
+  workEnd       String   @default("17:00")
+  visitMinutes  Int      @default(60)
+  aiEnabled     Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+}
