@@ -25,8 +25,10 @@ export async function login(_prev: string | null, form: FormData) {
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });
-  const next = String(form.get("next") ?? "/");
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+  // Vai direto ao destino final: redirecionar para "/" (que redireciona de novo) quebra o login em produção.
+  const next = String(form.get("next") ?? "");
+  const safe = next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/login") && next !== "/";
+  redirect(safe ? next : "/painel");
 }
 
 export async function logout() {
