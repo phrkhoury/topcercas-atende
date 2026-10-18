@@ -26,6 +26,7 @@ model Contact {
   phone        String        @unique
   name         String?
   channel      String        @default("sim") // sim | whatsapp
+  waJid        String? // conversa no WhatsApp (pode ser número ou LID) para responder pela conexão QR
   stage        String        @default("novo")
   service      String?
   address      String?

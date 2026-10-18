@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "./db";
 import { runAgent } from "./agent";
 import { getSettings } from "./settings";
-import { sendWhatsAppText } from "./whatsapp";
+import { deliverWhatsApp } from "./whatsapp";
 
 // Processa uma conversa por vez, para a IA não responder em paralelo à mesma pessoa.
 const locks = new Map<string, Promise<unknown>>();
@@ -26,14 +26,22 @@ export async function addMessage(conversationId: string, role: "customer" | "ai"
 export async function sendToCustomer(conversationId: string, role: "ai" | "agent", text: string, userId?: string) {
   const conversation = await db.conversation.findUniqueOrThrow({ where: { id: conversationId }, include: { contact: true } });
   await addMessage(conversationId, role, text, userId);
-  if (conversation.contact.channel === "whatsapp") await sendWhatsAppText(conversation.contact.phone, text);
+  if (conversation.contact.channel === "whatsapp") {
+    const delivered = await deliverWhatsApp(conversation.contact, text).catch((err) => {
+      console.error("[whatsapp] envio", err);
+      return false;
+    });
+    if (!delivered) await addMessage(conversationId, "system", "Mensagem não entregue: o WhatsApp está desconectado. Reconecte em WhatsApp.");
+  }
 }
 
-export async function handleIncoming({ phone, name, text, channel }: { phone: string; name?: string; text: string; channel: "sim" | "whatsapp" }) {
+type Incoming = { phone: string; name?: string; text: string; channel: "sim" | "whatsapp"; waJid?: string };
+
+export async function handleIncoming({ phone, name, text, channel, waJid }: Incoming) {
   const contact = await db.contact.upsert({
     where: { phone },
-    create: { phone, name: name || null, channel },
-    update: {},
+    create: { phone, name: name || null, channel, waJid },
+    update: waJid ? { waJid, channel } : {},
   });
   const conversation = await db.conversation.upsert({ where: { contactId: contact.id }, create: { contactId: contact.id }, update: {} });
   await addMessage(conversation.id, "customer", text);
@@ -48,4 +56,19 @@ export async function handleIncoming({ phone, name, text, channel }: { phone: st
     if (result.handedOff) await addMessage(conversation.id, "system", "Conversa transferida para atendimento humano.");
     return { conversationId: conversation.id };
   });
+}
+
+/** Alguém da equipe respondeu direto pelo celular: registra a mensagem e pausa a IA nessa conversa. */
+export async function recordReplyFromPhone({ phone, waJid, text }: { phone: string; waJid: string; text: string }) {
+  const contact = await db.contact.upsert({
+    where: { phone },
+    create: { phone, channel: "whatsapp", waJid },
+    update: { waJid, channel: "whatsapp" },
+  });
+  const conversation = await db.conversation.upsert({ where: { contactId: contact.id }, create: { contactId: contact.id }, update: {} });
+  if (conversation.mode === "ai") {
+    await db.conversation.update({ where: { id: conversation.id }, data: { mode: "human", handoffReason: "Respondido pelo celular" } });
+    await addMessage(conversation.id, "system", "Respondido pelo celular. A IA está pausada nesta conversa.");
+  }
+  await addMessage(conversation.id, "agent", text);
 }

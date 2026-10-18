@@ -43,3 +43,6 @@ next-env.d.ts
 !.env.example
 /prisma/*.db
 /prisma/*.db-journal
+
+# Sessão do WhatsApp por QR Code (credenciais — nunca enviar ao Git)
+/.wa-auth/

@@ -11,6 +11,7 @@ const NAV = [
   { href: "/crm", label: "CRM", icon: "◫" },
   { href: "/agenda", label: "Agenda", icon: "📅" },
   { href: "/simulador", label: "Simulador", icon: "📱" },
+  { href: "/whatsapp", label: "WhatsApp", icon: "🟢", adminOnly: true },
   { href: "/equipe", label: "Equipe", icon: "👥", adminOnly: true },
   { href: "/configuracoes", label: "Configurar IA", icon: "⚙", adminOnly: true },
 ];
