@@ -25,6 +25,7 @@ model User {
   passwordHash  String
   role          String         @default("colaborador") // admin | colaborador
   active        Boolean        @default(true)
+  shortcuts     String         @default("") // atalhos da sidebar escolhidos pela pessoa (chaves separadas por vírgula)
   createdAt     DateTime       @default(now())
   messages      Message[]
   conversations Conversation[]
@@ -102,5 +103,6 @@ model Settings {
   visitMinutes  Int      @default(60)
   services      String   @default("") // produtos/serviços, um por linha (vazio = lista padrão)
   aiEnabled     Boolean  @default(true)
+  hiddenPages   String   @default("") // páginas escondidas da sidebar para todos (chaves separadas por vírgula)
   updatedAt     DateTime @updatedAt
 }

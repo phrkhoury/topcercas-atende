@@ -10,6 +10,7 @@ import { checkPassword, ensureFirstAdmin, hashPassword, requireAdmin, requireUse
 import { SERVICE_SEPARATOR } from "@/lib/constants";
 import { STAGE_COLORS, stageExists, visitStageId } from "@/lib/stages";
 import { fromLocal } from "@/lib/time";
+import { PAGES, PAGE_KEYS, splitKeys } from "@/lib/pages";
 
 // ---------- Login ----------
 export async function login(_prev: string | null, form: FormData) {
@@ -234,4 +235,26 @@ export async function deleteStage(_prev: string | null, form: FormData) {
   ]);
   revalidateStages();
   return null;
+}
+
+// ---------- Sidebar ----------
+/** Atalhos da sidebar da pessoa logada (chaves de páginas, na ordem). */
+export async function setShortcuts(keys: string[]) {
+  const me = await requireUser();
+  const valid = [...new Set(keys)].filter((k) => PAGE_KEYS.includes(k)).slice(0, 12);
+  await db.user.update({ where: { id: me.id }, data: { shortcuts: valid.join(",") } });
+  revalidatePath("/", "layout");
+}
+
+/** Esconde ou mostra uma página na sidebar de todos (só administrador). */
+export async function setPageHidden(key: string, hidden: boolean) {
+  await requireAdmin();
+  const page = PAGES.find((p) => p.key === key);
+  if (!page?.hideable) return;
+  const settings = await db.settings.findUnique({ where: { id: 1 } });
+  const current = new Set(splitKeys(settings?.hiddenPages));
+  if (hidden) current.add(key);
+  else current.delete(key);
+  await db.settings.update({ where: { id: 1 }, data: { hiddenPages: [...current].join(",") } });
+  revalidatePath("/", "layout");
 }
