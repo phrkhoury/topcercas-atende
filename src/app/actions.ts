@@ -7,7 +7,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
 import { checkPassword, ensureFirstAdmin, hashPassword, requireAdmin, requireUser } from "@/lib/session";
-import { SERVICE_SEPARATOR, STAGE_IDS } from "@/lib/constants";
+import { SERVICE_SEPARATOR } from "@/lib/constants";
+import { STAGE_COLORS, stageExists, visitStageId } from "@/lib/stages";
 import { fromLocal } from "@/lib/time";
 
 // ---------- Login ----------
@@ -39,8 +40,8 @@ export async function logout() {
 // ---------- CRM ----------
 export async function moveStage(contactId: string, stage: string) {
   await requireUser();
-  const parsed = z.enum(STAGE_IDS).parse(stage);
-  await db.contact.update({ where: { id: contactId }, data: { stage: parsed } });
+  if (!(await stageExists(stage))) throw new Error("Etapa não encontrada");
+  await db.contact.update({ where: { id: contactId }, data: { stage } });
   revalidatePath("/crm");
 }
 
@@ -52,7 +53,7 @@ const contactInput = z.object({
   meters: z.coerce.number().int().min(0).optional(),
   value: z.coerce.number().min(0).optional(),
   notes: z.string().trim().max(4000).optional(),
-  stage: z.enum(STAGE_IDS),
+  stage: z.string().min(1),
 });
 
 export async function updateContact(form: FormData) {
@@ -61,6 +62,7 @@ export async function updateContact(form: FormData) {
   // Vários serviços podem ser marcados: grava todos juntos, separados por vírgula.
   const services = form.getAll("service").map(String).filter(Boolean);
   const { id, ...rest } = contactInput.parse({ ...raw, service: services.length ? services.join(SERVICE_SEPARATOR) : undefined });
+  if (!(await stageExists(rest.stage))) throw new Error("Etapa não encontrada");
   await db.contact.update({
     where: { id },
     data: {
@@ -92,7 +94,8 @@ export async function createAppointment(form: FormData) {
   await db.appointment.create({
     data: { contactId: data.contactId, start: fromLocal(`${data.date}T${data.time}`), durationMin: data.durationMin, address: data.address, notes: data.notes },
   });
-  await db.contact.update({ where: { id: data.contactId }, data: { stage: "visita_agendada" } });
+  const visitStage = await visitStageId();
+  if (visitStage) await db.contact.update({ where: { id: data.contactId }, data: { stage: visitStage } });
   revalidatePath("/agenda");
 }
 
@@ -171,4 +174,64 @@ export async function resetPassword(_prev: string | null, form: FormData) {
   if (password.length < 8) return "A senha precisa de pelo menos 8 caracteres.";
   await db.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(password) } });
   return "Senha redefinida.";
+}
+
+// ---------- Etapas do funil (só administrador) ----------
+const stageInput = z.object({
+  name: z.string().trim().min(1, "Dê um nome à etapa").max(40),
+  color: z.string().refine((c) => STAGE_COLORS.includes(c), "Cor inválida"),
+});
+
+function revalidateStages() {
+  revalidatePath("/crm");
+  revalidatePath("/crm/etapas");
+  revalidatePath("/painel");
+}
+
+export async function createStage(_prev: string | null, form: FormData) {
+  await requireAdmin();
+  const parsed = stageInput.safeParse(Object.fromEntries(form.entries()));
+  if (!parsed.success) return parsed.error.issues[0]?.message ?? "Dados inválidos.";
+  const last = await db.stage.findFirst({ orderBy: { position: "desc" }, select: { position: true } });
+  await db.stage.create({ data: { ...parsed.data, position: (last?.position ?? 0) + 1 } });
+  revalidateStages();
+  return `Etapa "${parsed.data.name}" criada.`;
+}
+
+export async function updateStage(_prev: string | null, form: FormData) {
+  await requireAdmin();
+  const id = String(form.get("id") ?? "");
+  const parsed = stageInput.safeParse(Object.fromEntries(form.entries()));
+  if (!parsed.success) return parsed.error.issues[0]?.message ?? "Dados inválidos.";
+  const isVisit = form.get("isVisit") === "on";
+  // Só uma etapa pode ser a de "visita agendada".
+  if (isVisit) await db.stage.updateMany({ where: { id: { not: id } }, data: { isVisit: false } });
+  await db.stage.update({ where: { id }, data: { ...parsed.data, isVisit } });
+  revalidateStages();
+  return "Salvo.";
+}
+
+export async function moveStageOrder(id: string, direction: "up" | "down") {
+  await requireAdmin();
+  const stages = await db.stage.findMany({ orderBy: { position: "asc" } });
+  const i = stages.findIndex((s) => s.id === id);
+  const j = direction === "up" ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= stages.length) return;
+  [stages[i], stages[j]] = [stages[j], stages[i]];
+  await db.$transaction(stages.map((s, pos) => db.stage.update({ where: { id: s.id }, data: { position: pos + 1 } })));
+  revalidateStages();
+}
+
+export async function deleteStage(_prev: string | null, form: FormData) {
+  await requireAdmin();
+  const id = String(form.get("id") ?? "");
+  const moveTo = String(form.get("moveTo") ?? "");
+  if ((await db.stage.count()) <= 1) return "O funil precisa ter pelo menos uma etapa.";
+  if (!moveTo || moveTo === id || !(await stageExists(moveTo))) return "Escolha para qual etapa mover os leads.";
+  await db.$transaction([
+    db.contact.updateMany({ where: { stage: id }, data: { stage: moveTo } }),
+    db.stage.delete({ where: { id } }),
+  ]);
+  revalidateStages();
+  return null;
 }

@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "./db";
 import { runAgent } from "./agent";
 import { getSettings } from "./settings";
+import { firstStageId } from "./stages";
 import { deliverWhatsApp } from "./whatsapp";
 
 // Processa uma conversa por vez, para a IA não responder em paralelo à mesma pessoa.
@@ -43,7 +44,7 @@ export async function handleIncoming({ phone, name, text, channel, waJid, waId }
   if (await alreadySaved(waId)) return { conversationId: null };
   const contact = await db.contact.upsert({
     where: { phone },
-    create: { phone, name: name || null, channel, waJid },
+    create: { phone, name: name || null, channel, waJid, stage: await firstStageId() },
     update: waJid ? { waJid, channel } : {},
   });
   const conversation = await db.conversation.upsert({ where: { contactId: contact.id }, create: { contactId: contact.id }, update: {} });
@@ -66,7 +67,7 @@ export async function recordReplyFromPhone({ phone, waJid, text, waId }: { phone
   if (await alreadySaved(waId)) return;
   const contact = await db.contact.upsert({
     where: { phone },
-    create: { phone, channel: "whatsapp", waJid },
+    create: { phone, channel: "whatsapp", waJid, stage: await firstStageId() },
     update: { waJid, channel: "whatsapp" },
   });
   const conversation = await db.conversation.upsert({ where: { contactId: contact.id }, create: { contactId: contact.id }, update: {} });
@@ -93,7 +94,7 @@ export async function importHistory(items: HistoryItem[]) {
     const waJid = list[list.length - 1].waJid;
     const contact = await db.contact.upsert({
       where: { phone },
-      create: { phone, name: name ?? null, channel: "whatsapp", waJid },
+      create: { phone, name: name ?? null, channel: "whatsapp", waJid, stage: await firstStageId() },
       update: { waJid, channel: "whatsapp" },
     });
     if (!contact.name && name) await db.contact.update({ where: { id: contact.id }, data: { name } });

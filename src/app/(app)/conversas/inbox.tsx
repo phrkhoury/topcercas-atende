@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ChatMessages, type ChatMessage } from "@/components/chat-messages";
-import { STAGES, stageLabel } from "@/lib/constants";
+import type { StageInfo } from "@/lib/stages";
 
 type ListItem = {
   id: string;
@@ -38,16 +38,18 @@ type Detail = {
 const POLL_MS = 2500;
 const displayName = (c: { name: string | null; phone: string }) => c.name || `+${c.phone}`;
 const initials = (c: { name: string | null; phone: string }) => (c.name ? c.name.split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase() : "#");
-const stageColor = (id: string) => STAGES.find((s) => s.id === id)?.color ?? "bg-slate-400";
 
 type Props = {
   initialId?: string;
   initialAgent?: string;
   me: { id: string; role: "admin" | "colaborador" };
   team: { id: string; name: string }[]; // colaboradores ativos (para o admin filtrar e transferir)
+  stages: StageInfo[];
 };
 
-export function Inbox({ initialId, initialAgent, me, team }: Props) {
+export function Inbox({ initialId, initialAgent, me, team, stages }: Props) {
+  const stageLabel = (id: string) => stages.find((s) => s.id === id)?.name ?? "Sem etapa";
+  const stageColor = (id: string) => stages.find((s) => s.id === id)?.color ?? "#94a3b8";
   const isAdmin = me.role === "admin";
   const [list, setList] = useState<ListItem[]>([]);
   const [selected, setSelected] = useState<string | undefined>(initialId);
@@ -220,7 +222,7 @@ export function Inbox({ initialId, initialAgent, me, team }: Props) {
               <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-line p-4 text-sm xl:block">
                 <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-dim">Lead</h2>
                 <div className="mb-4 flex items-center gap-2">
-                  <span className={`size-2 rounded-full ${stageColor(detail.contact.stage)}`} />
+                  <span className="size-2 rounded-full" style={{ backgroundColor: stageColor(detail.contact.stage) }} />
                   {stageLabel(detail.contact.stage)}
                 </div>
                 <dl className="space-y-3">

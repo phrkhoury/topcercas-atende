@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db } from "./db";
 import { getServices, getSettings, servicesFrom } from "./settings";
-import { STAGE_IDS, stageLabel } from "./constants";
+import { getStages, stageName, visitStageId, type StageInfo } from "./stages";
 import { addDays, formatDateTime, fromLocal, freeSlots, toLocalParts } from "./time";
 
 const MODEL = process.env.AI_MODEL || "claude-opus-5-5";
@@ -17,7 +17,7 @@ const getClient = () => (client ??= new Anthropic());
 // Ferramentas
 // ---------------------------------------------------------------------------
 // A lista de produtos/serviços vem de Configurar IA, por isso as ferramentas são montadas a cada execução.
-const buildTools = (services: string[]): Anthropic.Beta.BetaTool[] => [
+const buildTools = (services: string[], stages: StageInfo[]): Anthropic.Beta.BetaTool[] => [
   {
     name: "atualizar_lead",
     description:
@@ -33,7 +33,11 @@ const buildTools = (services: string[]): Anthropic.Beta.BetaTool[] => [
         endereco: { type: "string", description: "Endereço, bairro ou cidade do serviço" },
         metros: { type: "integer", description: "Metragem linear aproximada" },
         observacoes: { type: "string", description: "Detalhes relevantes: tipo de imóvel, altura do muro, prazo, etc." },
-        etapa: { type: "string", enum: STAGE_IDS, description: "Etapa do funil: qualificado quando já se sabe serviço e local" },
+        etapa: {
+          type: "string",
+          enum: stages.map((s) => s.id),
+          description: `Etapa do funil (envie o id). Opções: ${stages.map((s) => `${s.id} = ${s.name}`).join("; ")}.`,
+        },
       },
       additionalProperties: false,
     },
@@ -81,7 +85,7 @@ const leadInput = z.object({
   endereco: z.string().optional(),
   metros: z.number().int().positive().optional(),
   observacoes: z.string().optional(),
-  etapa: z.enum(STAGE_IDS).optional(),
+  etapa: z.string().optional(),
 });
 const slotsInput = z.object({ data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
 const scheduleInput = z.object({ inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/), endereco: z.string().min(3), observacoes: z.string().optional() });
@@ -94,6 +98,7 @@ async function runTool(name: string, rawInput: unknown, ctx: ToolContext): Promi
   switch (name) {
     case "atualizar_lead": {
       const input = leadInput.parse(rawInput);
+      if (input.etapa && !(await getStages()).some((s) => s.id === input.etapa)) throw new Error(`Etapa inválida: ${input.etapa}`);
       const contact = await db.contact.findUniqueOrThrow({ where: { id: ctx.contactId } });
       const notes = input.observacoes ? [contact.notes, input.observacoes].filter(Boolean).join("\n") : undefined;
       await db.contact.update({
@@ -133,7 +138,8 @@ async function runTool(name: string, rawInput: unknown, ctx: ToolContext): Promi
       await db.appointment.create({
         data: { contactId: ctx.contactId, start, durationMin: settings.visitMinutes, address: input.endereco, notes: input.observacoes },
       });
-      await db.contact.update({ where: { id: ctx.contactId }, data: { stage: "visita_agendada", address: input.endereco } });
+      const visitStage = await visitStageId();
+      await db.contact.update({ where: { id: ctx.contactId }, data: { address: input.endereco, ...(visitStage ? { stage: visitStage } : {}) } });
       return `Visita agendada para ${formatDateTime(start)}. Confirme com o cliente e avise que ele receberá um lembrete na véspera.`;
     }
     case "transferir_para_humano": {
@@ -178,7 +184,7 @@ Ferramentas: registre no CRM tudo o que descobrir com atualizar_lead. Para agend
   const visits = contact.appointments.map((a) => formatDateTime(a.start)).join("; ");
   const now = new Date();
   const dynamic = `Agora: ${formatDateTime(now)} (hoje é ${toLocalParts(now).date}, horário de Brasília).
-Dados do cliente no CRM: nome=${contact.name ?? "?"}; telefone=${contact.phone}; etapa=${stageLabel(contact.stage)}; serviço=${contact.service ?? "?"}; endereço=${contact.address ?? "?"}; metragem=${contact.meters ?? "?"}${visits ? `; visitas agendadas=${visits}` : ""}.`;
+Dados do cliente no CRM: nome=${contact.name ?? "?"}; telefone=${contact.phone}; etapa=${stageName(await getStages(), contact.stage)}; serviço=${contact.service ?? "?"}; endereço=${contact.address ?? "?"}; metragem=${contact.meters ?? "?"}${visits ? `; visitas agendadas=${visits}` : ""}.`;
 
   return [
     { type: "text", text: stable, cache_control: { type: "ephemeral" } },
@@ -204,7 +210,7 @@ export async function runAgent(conversationId: string): Promise<AgentResult> {
   const conversation = await db.conversation.findUniqueOrThrow({ where: { id: conversationId } });
   const ctx: ToolContext = { contactId: conversation.contactId, conversationId, handedOff: false };
   const system = await buildSystem(conversation.contactId);
-  const agentTools = buildTools(await getServices());
+  const agentTools = buildTools(await getServices(), await getStages());
   const messages = await buildHistory(conversationId);
   if (!messages.length) return { reply: null, handedOff: false };
 

@@ -7,7 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Valores de etapa, papel e status ficam em src/lib/constants.ts.
+// Valores de papel e status ficam em src/lib/constants.ts. As etapas do funil ficam na tabela Stage.
+
+// Etapa do funil do CRM, editável pelo administrador. Contact.stage guarda o id da etapa.
+model Stage {
+  id       String  @id @default(cuid())
+  name     String
+  color    String  @default("#94a3b8")
+  position Int
+  isVisit  Boolean @default(false) // para onde o lead vai quando uma visita é agendada
+}
 
 model User {
   id            String         @id @default(cuid())

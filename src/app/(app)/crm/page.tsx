@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
-import { STAGES, parseServices } from "@/lib/constants";
+import { parseServices } from "@/lib/constants";
 import { getServices } from "@/lib/settings";
+import { getStages } from "@/lib/stages";
+import { requireUser } from "@/lib/session";
 import { formatDateTime } from "@/lib/time";
 import { updateContact } from "@/app/actions";
 import { Kanban } from "./kanban";
@@ -11,7 +13,8 @@ export const dynamic = "force-dynamic";
 
 export default async function CrmPage({ searchParams }: { searchParams: Promise<{ lead?: string }> }) {
   const { lead: leadId } = await searchParams;
-  const services = await getServices();
+  const me = await requireUser();
+  const [services, stages] = await Promise.all([getServices(), getStages()]);
   const contacts = await db.contact.findMany({ orderBy: { updatedAt: "desc" }, include: { conversation: { select: { id: true, mode: true } } } });
   const lead = leadId
     ? await db.contact.findUnique({ where: { id: leadId }, include: { conversation: true, appointments: { orderBy: { start: "desc" } } } })
@@ -19,8 +22,11 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
 
   return (
     <>
-      <PageHeader title="CRM" subtitle="Arraste os cards entre as etapas. A IA também move os leads conforme a conversa avança." />
+      <PageHeader title="CRM" subtitle="Arraste os cards entre as etapas. A IA também move os leads conforme a conversa avança.">
+        {me.role === "admin" && <Link href="/crm/etapas" className="btn-ghost">✎ Editar etapas</Link>}
+      </PageHeader>
       <Kanban
+        stages={stages}
         leads={contacts.map((c) => ({
           id: c.id,
           name: c.name,
@@ -55,7 +61,7 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
               <div>
                 <label className="label" htmlFor="stage">Etapa</label>
                 <select id="stage" name="stage" defaultValue={lead.stage} className="input">
-                  {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
               <fieldset>

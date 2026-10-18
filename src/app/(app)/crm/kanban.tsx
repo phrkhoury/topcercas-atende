@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useOptimistic, useTransition } from "react";
-import { STAGES } from "@/lib/constants";
 import { moveStage } from "@/app/actions";
+import type { StageInfo } from "@/lib/stages";
 
 export type LeadCard = {
   id: string;
@@ -19,7 +19,7 @@ export type LeadCard = {
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function Kanban({ leads }: { leads: LeadCard[] }) {
+export function Kanban({ leads, stages }: { leads: LeadCard[]; stages: StageInfo[] }) {
   const [, startTransition] = useTransition();
   const [items, setOptimistic] = useOptimistic(leads, (state, { id, stage }: { id: string; stage: string }) =>
     state.map((l) => (l.id === id ? { ...l, stage } : l)),
@@ -38,7 +38,7 @@ export function Kanban({ leads }: { leads: LeadCard[] }) {
 
   return (
     <div className="flex gap-4 overflow-x-auto p-4 md:p-8">
-      {STAGES.map((stage) => {
+      {stages.map((stage) => {
         const col = items.filter((l) => l.stage === stage.id);
         const total = col.reduce((sum, l) => sum + (l.value ?? 0), 0);
         return (
@@ -49,8 +49,8 @@ export function Kanban({ leads }: { leads: LeadCard[] }) {
             className="flex w-72 shrink-0 flex-col rounded-2xl bg-panel p-3"
           >
             <header className="mb-3 flex items-center gap-2 px-1">
-              <span className={`size-2 rounded-full ${stage.color}`} />
-              <h2 className="text-sm font-semibold">{stage.label}</h2>
+              <span className="size-2 rounded-full" style={{ backgroundColor: stage.color }} />
+              <h2 className="text-sm font-semibold">{stage.name}</h2>
               <span className="text-xs text-dim">{col.length}</span>
               {total > 0 && <span className="ml-auto text-xs text-muted">{brl(total)}</span>}
             </header>

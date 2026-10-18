@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
-import { STAGES } from "@/lib/constants";
+import { getStages } from "@/lib/stages";
 import { formatDateTime, fromLocal, toLocalParts } from "@/lib/time";
 import { getSettings } from "@/lib/settings";
 
@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 export default async function PainelPage() {
   const today = fromLocal(`${toLocalParts(new Date()).date}T00:00`);
-  const [settings, todayCustomerMsgs, todayAiMsgs, newLeads, humanQueue, byStage, upcoming] = await Promise.all([
+  const [stages, settings, todayCustomerMsgs, todayAiMsgs, newLeads, humanQueue, byStage, upcoming] = await Promise.all([
+    getStages(),
     getSettings(),
     db.message.count({ where: { role: "customer", createdAt: { gte: today } } }),
     db.message.count({ where: { role: "ai", createdAt: { gte: today } } }),
@@ -57,16 +58,16 @@ export default async function PainelPage() {
           <section className="card p-5">
             <h2 className="mb-4 font-semibold">Funil ({totalLeads} leads)</h2>
             <div className="space-y-3">
-              {STAGES.map((s) => {
+              {stages.map((s) => {
                 const n = stageCount(s.id);
                 return (
                   <div key={s.id}>
                     <div className="mb-1 flex justify-between text-sm">
-                      <span>{s.label}</span>
+                      <span>{s.name}</span>
                       <span className="text-muted">{n}</span>
                     </div>
                     <div className="h-2 rounded-full bg-card-2">
-                      <div className={`h-2 rounded-full ${s.color}`} style={{ width: `${totalLeads ? (n / totalLeads) * 100 : 0}%` }} />
+                      <div className="h-2 rounded-full" style={{ backgroundColor: s.color, width: `${totalLeads ? (n / totalLeads) * 100 : 0}%` }} />
                     </div>
                   </div>
                 );
