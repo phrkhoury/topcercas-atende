@@ -91,6 +91,7 @@ model Settings {
   workStart     String   @default("08:00")
   workEnd       String   @default("17:00")
   visitMinutes  Int      @default(60)
+  services      String   @default("") // produtos/serviços, um por linha (vazio = lista padrão)
   aiEnabled     Boolean  @default(true)
   updatedAt     DateTime @updatedAt
 }

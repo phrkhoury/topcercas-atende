@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/page-header";
-import { getSettings } from "@/lib/settings";
+import { getSettings, servicesFrom } from "@/lib/settings";
 import { requireAdmin } from "@/lib/session";
 import { SettingsForm } from "./settings-form";
 
@@ -11,7 +11,7 @@ export default async function ConfiguracoesPage() {
   return (
     <>
       <PageHeader title="Configurar IA" subtitle="Ensine a IA sobre a TOPCERCAS e defina como ela atende." />
-      <SettingsForm settings={settings} />
+      <SettingsForm settings={{ ...settings, services: servicesFrom(settings).join("\n") }} />
     </>
   );
 }

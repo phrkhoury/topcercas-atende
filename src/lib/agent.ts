@@ -2,7 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db } from "./db";
-import { getSettings } from "./settings";
+import { getServices, getSettings, servicesFrom } from "./settings";
 import { STAGE_IDS, stageLabel } from "./constants";
 import { addDays, formatDateTime, fromLocal, freeSlots, toLocalParts } from "./time";
 
@@ -16,7 +16,8 @@ const getClient = () => (client ??= new Anthropic());
 // ---------------------------------------------------------------------------
 // Ferramentas
 // ---------------------------------------------------------------------------
-const tools: Anthropic.Beta.BetaTool[] = [
+// A lista de produtos/serviços vem de Configurar IA, por isso as ferramentas são montadas a cada execução.
+const buildTools = (services: string[]): Anthropic.Beta.BetaTool[] => [
   {
     name: "atualizar_lead",
     description:
@@ -25,7 +26,10 @@ const tools: Anthropic.Beta.BetaTool[] = [
       type: "object",
       properties: {
         nome: { type: "string", description: "Nome do cliente" },
-        servico: { type: "string", description: "Serviço de interesse, ex.: Cerca elétrica, Concertina, Alambrado, Gradil, Portão automático, Manutenção" },
+        servico: {
+          type: "string",
+          description: `Produtos/serviços de interesse. Use os nomes desta lista: ${services.join(", ")}. Se forem vários, separe por vírgula e envie a lista completa (substitui a anterior).`,
+        },
         endereco: { type: "string", description: "Endereço, bairro ou cidade do serviço" },
         metros: { type: "integer", description: "Metragem linear aproximada" },
         observacoes: { type: "string", description: "Detalhes relevantes: tipo de imóvel, altura do muro, prazo, etc." },
@@ -159,6 +163,8 @@ Estilo:
 - Faça uma pergunta por vez.
 - Use apenas as informações abaixo. Se não souber algo, diga que vai verificar com a equipe e transfira para um atendente.
 
+Produtos e serviços que a empresa oferece: ${servicesFrom(settings).join(", ")}.
+
 Sobre a empresa:
 ${settings.knowledge}
 
@@ -198,6 +204,7 @@ export async function runAgent(conversationId: string): Promise<AgentResult> {
   const conversation = await db.conversation.findUniqueOrThrow({ where: { id: conversationId } });
   const ctx: ToolContext = { contactId: conversation.contactId, conversationId, handedOff: false };
   const system = await buildSystem(conversation.contactId);
+  const agentTools = buildTools(await getServices());
   const messages = await buildHistory(conversationId);
   if (!messages.length) return { reply: null, handedOff: false };
 
@@ -211,7 +218,7 @@ export async function runAgent(conversationId: string): Promise<AgentResult> {
         fallbacks: "default",
         output_config: { effort: "low" },
         system,
-        tools,
+        tools: agentTools,
         messages,
       });
 

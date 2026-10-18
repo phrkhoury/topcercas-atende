@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
-import { SERVICES, STAGES } from "@/lib/constants";
+import { STAGES, parseServices } from "@/lib/constants";
+import { getServices } from "@/lib/settings";
 import { formatDateTime } from "@/lib/time";
 import { updateContact } from "@/app/actions";
 import { Kanban } from "./kanban";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CrmPage({ searchParams }: { searchParams: Promise<{ lead?: string }> }) {
   const { lead: leadId } = await searchParams;
+  const services = await getServices();
   const contacts = await db.contact.findMany({ orderBy: { updatedAt: "desc" }, include: { conversation: { select: { id: true, mode: true } } } });
   const lead = leadId
     ? await db.contact.findUnique({ where: { id: leadId }, include: { conversation: true, appointments: { orderBy: { start: "desc" } } } })
@@ -50,19 +52,25 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
                 <label className="label" htmlFor="name">Nome</label>
                 <input id="name" name="name" defaultValue={lead.name ?? ""} className="input" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label" htmlFor="stage">Etapa</label>
-                  <select id="stage" name="stage" defaultValue={lead.stage} className="input">
-                    {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label" htmlFor="service">Serviço</label>
-                  <input id="service" name="service" list="services" defaultValue={lead.service ?? ""} className="input" />
-                  <datalist id="services">{SERVICES.map((s) => <option key={s} value={s} />)}</datalist>
-                </div>
+              <div>
+                <label className="label" htmlFor="stage">Etapa</label>
+                <select id="stage" name="stage" defaultValue={lead.stage} className="input">
+                  {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
               </div>
+              <fieldset>
+                <legend className="label">Serviços (marque um ou mais)</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {[...new Set([...services, ...parseServices(lead.service)])].map((s) => (
+                    <label key={s} className="cursor-pointer">
+                      <input type="checkbox" name="service" value={s} defaultChecked={parseServices(lead.service).includes(s)} className="peer sr-only" />
+                      <span className="block rounded-xl border border-line-2 px-3 py-2 text-sm text-muted peer-checked:border-brand peer-checked:bg-brand/15 peer-checked:text-ink peer-focus-visible:outline peer-focus-visible:outline-brand">
+                        {s}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <div>
                 <label className="label" htmlFor="address">Endereço / bairro</label>
                 <input id="address" name="address" defaultValue={lead.address ?? ""} className="input" />

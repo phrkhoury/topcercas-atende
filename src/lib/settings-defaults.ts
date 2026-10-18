@@ -8,13 +8,13 @@ Telefone: (31) 3581-1537 · WhatsApp: (31) 99759-3764
 Instagram: @topcercas_oficial
 Atendemos Belo Horizonte e região metropolitana.
 
-Serviços:
-- Cerca elétrica: proteção perimetral com central, bateria de backup, sirene e placas de advertência conforme a norma.
-- Concertina: espirais de lâminas em aço galvanizado; barreira física que funciona sem energia. Combina com cerca elétrica.
-- Alambrado: tela de arame galvanizada ou revestida em PVC, para quadras, terrenos, chácaras e divisas.
-- Gradil: painéis de aço soldado com pintura eletrostática, para fachadas, condomínios e empresas.
-- Portões automáticos: automação de portões deslizantes, pivotantes e basculantes.
-- Manutenção de cercas e portões, inclusive instalados por outras empresas.
+Produtos e serviços:
+- Tela soldada
+- Tela soldada revestida
+- Gradil
+- Postes para tela
+- Postes para gradil
+- Portões
 
 Como funciona: orçamento e visita técnica gratuitos. Na visita medimos o local e depois enviamos a proposta com materiais, prazo, garantia e formas de pagamento (PIX, transferência, cartão e boleto).`,
   instructions: `- Não informe preços: o valor depende da visita técnica. Se insistirem, explique isso com gentileza e ofereça agendar a visita.

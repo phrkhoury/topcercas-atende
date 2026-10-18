@@ -7,7 +7,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
 import { checkPassword, ensureFirstAdmin, hashPassword, requireAdmin, requireUser } from "@/lib/session";
-import { STAGE_IDS } from "@/lib/constants";
+import { SERVICE_SEPARATOR, STAGE_IDS } from "@/lib/constants";
 import { fromLocal } from "@/lib/time";
 
 // ---------- Login ----------
@@ -47,7 +47,7 @@ export async function moveStage(contactId: string, stage: string) {
 const contactInput = z.object({
   id: z.string(),
   name: z.string().trim().max(120).optional(),
-  service: z.string().trim().max(120).optional(),
+  service: z.string().trim().max(500).optional(),
   address: z.string().trim().max(240).optional(),
   meters: z.coerce.number().int().min(0).optional(),
   value: z.coerce.number().min(0).optional(),
@@ -58,7 +58,9 @@ const contactInput = z.object({
 export async function updateContact(form: FormData) {
   await requireUser();
   const raw = Object.fromEntries([...form.entries()].filter(([, v]) => v !== ""));
-  const { id, ...rest } = contactInput.parse(raw);
+  // Vários serviços podem ser marcados: grava todos juntos, separados por vírgula.
+  const services = form.getAll("service").map(String).filter(Boolean);
+  const { id, ...rest } = contactInput.parse({ ...raw, service: services.length ? services.join(SERVICE_SEPARATOR) : undefined });
   await db.contact.update({
     where: { id },
     data: {
@@ -112,6 +114,7 @@ const settingsInput = z.object({
   workEnd: z.string().regex(/^\d{2}:\d{2}$/),
   visitMinutes: z.coerce.number().int().min(15).max(480),
   aiEnabled: z.boolean(),
+  services: z.string().max(5000),
 });
 
 export async function saveSettings(_prev: string | null, form: FormData) {
@@ -123,7 +126,9 @@ export async function saveSettings(_prev: string | null, form: FormData) {
   });
   if (!parsed.success) return "Confira os campos: " + parsed.error.issues.map((i) => i.path.join(".")).join(", ");
   if (parsed.data.workStart >= parsed.data.workEnd) return "O fim do expediente deve ser depois do início.";
-  const data = { ...parsed.data, workDays: parsed.data.workDays.sort().join(",") };
+  // Serviços: um por linha, sem vírgulas (a vírgula separa vários serviços na ficha do lead), sem repetidos.
+  const services = [...new Set(parsed.data.services.split(/\r?\n/).map((s) => s.replace(/,/g, " ").trim()).filter(Boolean))].join("\n");
+  const data = { ...parsed.data, services, workDays: parsed.data.workDays.sort().join(",") };
   await db.settings.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
   revalidatePath("/configuracoes");
   return "Configurações salvas.";

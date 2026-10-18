@@ -13,6 +13,7 @@ type Settings = {
   workEnd: string;
   visitMinutes: number;
   aiEnabled: boolean;
+  services: string; // um por linha
 };
 
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -41,6 +42,12 @@ export function SettingsForm({ settings }: { settings: Settings }) {
             <input id="assistantName" name="assistantName" defaultValue={settings.assistantName} required className="input" />
           </div>
         </div>
+      </section>
+
+      <section className="card space-y-2 p-5">
+        <label className="font-semibold" htmlFor="services">Produtos e serviços</label>
+        <p className="text-sm text-muted">Um por linha. Aparecem como opções na ficha do lead (CRM) e a IA usa esses nomes ao registrar o interesse do cliente.</p>
+        <textarea id="services" name="services" rows={7} defaultValue={settings.services} className="input text-sm leading-relaxed" />
       </section>
 
       <section className="card space-y-2 p-5">
