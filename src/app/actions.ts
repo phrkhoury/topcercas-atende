@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
-import { checkPassword, ensureFirstAdmin, hashPassword, requireAdmin, requireUser } from "@/lib/session";
+import { canAccessContact, checkPassword, ensureFirstAdmin, hashPassword, requireAdmin, requireUser } from "@/lib/session";
 import { SERVICE_SEPARATOR } from "@/lib/constants";
 import { STAGE_COLORS, stageExists, visitStageId } from "@/lib/stages";
 import { fromLocal } from "@/lib/time";
@@ -40,7 +40,8 @@ export async function logout() {
 
 // ---------- CRM ----------
 export async function moveStage(contactId: string, stage: string) {
-  await requireUser();
+  const me = await requireUser();
+  if (!(await canAccessContact(me, contactId))) throw new Error("Sem acesso a este contato");
   if (!(await stageExists(stage))) throw new Error("Etapa não encontrada");
   await db.contact.update({ where: { id: contactId }, data: { stage } });
   revalidatePath("/crm");
@@ -58,12 +59,13 @@ const contactInput = z.object({
 });
 
 export async function updateContact(form: FormData) {
-  await requireUser();
+  const me = await requireUser();
   const raw = Object.fromEntries([...form.entries()].filter(([, v]) => v !== ""));
   // Vários serviços podem ser marcados: grava todos juntos, separados por vírgula.
   const services = form.getAll("service").map(String).filter(Boolean);
   const { id, ...rest } = contactInput.parse({ ...raw, service: services.length ? services.join(SERVICE_SEPARATOR) : undefined });
   if (!(await stageExists(rest.stage))) throw new Error("Etapa não encontrada");
+  if (!(await canAccessContact(me, id))) throw new Error("Sem acesso a este contato");
   await db.contact.update({
     where: { id },
     data: {
@@ -90,8 +92,9 @@ const appointmentInput = z.object({
 });
 
 export async function createAppointment(form: FormData) {
-  await requireUser();
+  const me = await requireUser();
   const data = appointmentInput.parse(Object.fromEntries([...form.entries()].filter(([, v]) => v !== "")));
+  if (!(await canAccessContact(me, data.contactId))) throw new Error("Sem acesso a este contato");
   await db.appointment.create({
     data: { contactId: data.contactId, start: fromLocal(`${data.date}T${data.time}`), durationMin: data.durationMin, address: data.address, notes: data.notes },
   });
@@ -101,7 +104,9 @@ export async function createAppointment(form: FormData) {
 }
 
 export async function setAppointmentStatus(id: string, status: string) {
-  await requireUser();
+  const me = await requireUser();
+  const appt = await db.appointment.findUniqueOrThrow({ where: { id }, select: { contactId: true } });
+  if (!(await canAccessContact(me, appt.contactId))) throw new Error("Sem acesso a esta visita");
   const parsed = z.enum(["agendada", "concluida", "cancelada"]).parse(status);
   await db.appointment.update({ where: { id }, data: { status: parsed } });
   revalidatePath("/agenda");

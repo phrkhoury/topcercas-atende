@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { parseServices } from "@/lib/constants";
 import { getServices } from "@/lib/settings";
 import { getStages } from "@/lib/stages";
-import { requireUser } from "@/lib/session";
+import { contactScope, requireUser } from "@/lib/session";
 import { formatDateTime } from "@/lib/time";
 import { updateContact } from "@/app/actions";
 import { Kanban } from "./kanban";
@@ -15,9 +15,9 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
   const { lead: leadId } = await searchParams;
   const me = await requireUser();
   const [services, stages] = await Promise.all([getServices(), getStages()]);
-  const contacts = await db.contact.findMany({ orderBy: { updatedAt: "desc" }, include: { conversation: { select: { id: true, mode: true } } } });
+  const contacts = await db.contact.findMany({ where: contactScope(me), orderBy: { updatedAt: "desc" }, include: { conversation: { select: { id: true, mode: true } } } });
   const lead = leadId
-    ? await db.contact.findUnique({ where: { id: leadId }, include: { conversation: true, appointments: { orderBy: { start: "desc" } } } })
+    ? await db.contact.findFirst({ where: { id: leadId, ...contactScope(me) }, include: { conversation: true, appointments: { orderBy: { start: "desc" } } } })
     : null;
 
   return (

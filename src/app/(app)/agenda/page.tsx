@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { APPOINTMENT_STATUS } from "@/lib/constants";
 import { formatDayLong, formatTime, fromLocal, toLocalParts } from "@/lib/time";
 import { getSettings } from "@/lib/settings";
+import { contactScope, requireUser } from "@/lib/session";
 import { createAppointment, setAppointmentStatus } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -17,16 +18,17 @@ const STATUS_STYLE: Record<string, string> = {
 export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
   const { ver } = await searchParams;
   const showPast = ver === "passadas";
+  const me = await requireUser();
   const today = fromLocal(`${toLocalParts(new Date()).date}T00:00`);
 
   const [appointments, contacts, settings] = await Promise.all([
     db.appointment.findMany({
-      where: showPast ? { start: { lt: today } } : { start: { gte: today } },
+      where: { contact: contactScope(me), ...(showPast ? { start: { lt: today } } : { start: { gte: today } }) },
       orderBy: { start: showPast ? "desc" : "asc" },
       take: 200,
       include: { contact: { include: { conversation: { select: { id: true } } } } },
     }),
-    db.contact.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, address: true } }),
+    db.contact.findMany({ where: contactScope(me), orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, address: true } }),
     getSettings(),
   ]);
 

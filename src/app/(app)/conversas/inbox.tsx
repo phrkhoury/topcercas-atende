@@ -101,7 +101,8 @@ export function Inbox({ initialId, initialAgent, me, team, stages }: Props) {
   }
 
   // "Precisa de você" = conversas com humano ainda sem responsável
-  const needsYou = (c: ListItem) => c.mode === "human" && !c.assignedTo;
+  // Admin: "Sem responsável" = humano sem dono. Colaborador: "Aguardando resposta" = as dele em atendimento humano.
+  const needsYou = (c: ListItem) => c.mode === "human" && (isAdmin ? !c.assignedTo : true);
   const mine = (c: ListItem) => c.assignedTo?.id === me.id;
   const visible = list.filter((c) => filter === "todas" || (filter === "humano" ? needsYou(c) : mine(c)));
   const humanCount = list.filter(needsYou).length;
@@ -115,8 +116,8 @@ export function Inbox({ initialId, initialAgent, me, team, stages }: Props) {
           <h1 className="text-lg font-semibold">Conversas</h1>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <button onClick={() => setFilter("todas")} className={`chip px-3 py-1 ${filter === "todas" ? "bg-brand/15 text-brand" : "bg-card text-muted"}`}>Todas ({list.length})</button>
-            <button onClick={() => setFilter("humano")} className={`chip px-3 py-1 ${filter === "humano" ? "bg-amber-500/15 text-amber-400" : "bg-card text-muted"}`}>Sem responsável ({humanCount})</button>
-            <button onClick={() => setFilter("minhas")} className={`chip px-3 py-1 ${filter === "minhas" ? "bg-sky-500/15 text-sky-300" : "bg-card text-muted"}`}>Minhas ({mineCount})</button>
+            <button onClick={() => setFilter("humano")} className={`chip px-3 py-1 ${filter === "humano" ? "bg-amber-500/15 text-amber-400" : "bg-card text-muted"}`}>{isAdmin ? "Sem responsável" : "Aguardando resposta"} ({humanCount})</button>
+            {isAdmin && <button onClick={() => setFilter("minhas")} className={`chip px-3 py-1 ${filter === "minhas" ? "bg-sky-500/15 text-sky-300" : "bg-card text-muted"}`}>Minhas ({mineCount})</button>}
           </div>
           {isAdmin && (
             <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} className="input mt-3 py-1.5 text-xs" aria-label="Filtrar por colaborador">
@@ -129,7 +130,7 @@ export function Inbox({ initialId, initialAgent, me, team, stages }: Props) {
         <ul className="flex-1 overflow-y-auto">
           {visible.length === 0 && (
             <li className="p-6 text-center text-sm text-dim">
-              Nenhuma conversa ainda. Use o <Link className="text-brand underline" href="/simulador">simulador</Link> para testar.
+              {isAdmin ? (<>Nenhuma conversa ainda. Use o <Link className="text-brand underline" href="/simulador">simulador</Link> para testar.</>) : "Nenhuma conversa atribuída a você ainda. O administrador distribui as conversas."}
             </li>
           )}
           {visible.map((c) => (

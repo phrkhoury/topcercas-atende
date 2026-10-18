@@ -4,20 +4,26 @@ import { PageHeader } from "@/components/page-header";
 import { getStages } from "@/lib/stages";
 import { formatDateTime, fromLocal, toLocalParts } from "@/lib/time";
 import { getSettings } from "@/lib/settings";
+import { contactScope, conversationScope, requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function PainelPage() {
+  const me = await requireUser();
   const today = fromLocal(`${toLocalParts(new Date()).date}T00:00`);
+  const convScope = conversationScope(me);
+  const leadScope = contactScope(me);
+  // Fila "Precisa de você": para o admin, conversas sem responsável; para o colaborador, as dele aguardando resposta humana.
+  const queueWhere = me.role === "admin" ? { mode: "human", assignedToId: null } : { mode: "human", assignedToId: me.id };
   const [stages, settings, todayCustomerMsgs, todayAiMsgs, newLeads, humanQueue, byStage, upcoming] = await Promise.all([
     getStages(),
     getSettings(),
-    db.message.count({ where: { role: "customer", createdAt: { gte: today } } }),
-    db.message.count({ where: { role: "ai", createdAt: { gte: today } } }),
-    db.contact.count({ where: { createdAt: { gte: today } } }),
-    db.conversation.findMany({ where: { mode: "human", assignedToId: null }, include: { contact: true }, orderBy: { lastMessageAt: "desc" }, take: 8 }),
-    db.contact.groupBy({ by: ["stage"], _count: true }),
-    db.appointment.findMany({ where: { status: "agendada", start: { gte: new Date() } }, include: { contact: true }, orderBy: { start: "asc" }, take: 6 }),
+    db.message.count({ where: { role: "customer", createdAt: { gte: today }, conversation: convScope } }),
+    db.message.count({ where: { role: "ai", createdAt: { gte: today }, conversation: convScope } }),
+    db.contact.count({ where: { createdAt: { gte: today }, ...leadScope } }),
+    db.conversation.findMany({ where: queueWhere, include: { contact: true }, orderBy: { lastMessageAt: "desc" }, take: 8 }),
+    db.contact.groupBy({ by: ["stage"], where: leadScope, _count: true }),
+    db.appointment.findMany({ where: { status: "agendada", start: { gte: new Date() }, contact: leadScope }, include: { contact: true }, orderBy: { start: "asc" }, take: 6 }),
   ]);
   const stageCount = (id: string) => byStage.find((s) => s.stage === id)?._count ?? 0;
   const totalLeads = byStage.reduce((n, s) => n + s._count, 0);

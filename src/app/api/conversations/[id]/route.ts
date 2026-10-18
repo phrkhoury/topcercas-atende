@@ -62,7 +62,8 @@ export async function POST(req: Request, { params }: Params) {
     await sendToCustomer(id, "agent", body.text, user.id);
   } else if (body.action === "mode") {
     if (body.mode === "ai") {
-      await db.conversation.update({ where: { id }, data: { mode: "ai", handoffReason: null, assignedToId: null } });
+      // A conversa continua com o mesmo responsável; só a IA volta a responder.
+      await db.conversation.update({ where: { id }, data: { mode: "ai", handoffReason: null } });
       await addMessage(id, "system", `${user.name} devolveu a conversa para a IA.`);
     } else {
       await db.conversation.update({ where: { id }, data: { mode: "human", handoffReason: `${user.name} assumiu a conversa`, assignedToId: user.id } });

@@ -19,7 +19,7 @@ export const PAGES: PageDef[] = [
   { key: "agenda", href: "/agenda", label: "Agendamentos", description: "Visitas técnicas e lembretes", main: true, hideable: true },
   { key: "ia", href: "/configuracoes", label: "Assistente IA", description: "Conhecimento, regras e horários da IA", main: true, adminOnly: true },
   { key: "whatsapp", href: "/whatsapp", label: "Conexões", description: "Conectar o WhatsApp por QR Code", adminOnly: true, hideable: true },
-  { key: "simulador", href: "/simulador", label: "Simulador", description: "Testar a IA como se fosse um cliente", hideable: true },
+  { key: "simulador", href: "/simulador", label: "Simulador", description: "Testar a IA como se fosse um cliente", adminOnly: true, hideable: true },
   { key: "etapas", href: "/crm/etapas", label: "Etapas do funil", description: "Criar e organizar as etapas do CRM", adminOnly: true, hideable: true },
   { key: "workspace", href: "/equipe", label: "Workspace", description: "Equipe e páginas da sidebar", adminOnly: true },
 ];
